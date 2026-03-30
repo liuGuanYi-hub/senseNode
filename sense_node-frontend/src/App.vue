@@ -27,11 +27,23 @@
         <div class="section-title">分级告警协同追踪日志</div>
         <div class="alert-list-container">
           <transition-group name="list" tag="ul" class="alert-list">
-            <li v-for="log in alertLogs" :key="log.id" :class="['alert-item', log.alertMessage.includes('预警') ? 'item-warning' : '']">
+            <li v-for="log in alertLogs" :key="log.id" 
+                :class="[
+                  'alert-item', 
+                  log.alertMessage.includes('预警') ? 'item-warning' : '',
+                  log.alertMessage.includes('治理') ? 'item-governance' : '' 
+                ]">
               <span class="alert-time">{{ formatTime(log.createTime) }}</span>
               <span class="alert-device">[{{ log.deviceId }}]</span>
               <span class="alert-msg">{{ log.alertMessage }}</span>
-              <span :class="['alert-status', log.alertMessage.includes('预警') ? 'status-warning' : '']">实时</span>
+              
+              <span :class="[
+                  'alert-status', 
+                  log.alertMessage.includes('预警') ? 'status-warning' : '',
+                  log.alertMessage.includes('治理') ? 'status-governance' : ''
+                ]">
+                {{ log.alertMessage.includes('治理') ? '治理' : '实时' }}
+              </span>
             </li>
           </transition-group>
           <div v-if="alertLogs.length === 0" class="empty-state">
@@ -346,6 +358,19 @@ onBeforeUnmount(() => {
 .list-enter-from { opacity: 0; transform: translateX(30px) scaleY(0.5); }
 .list-leave-to { opacity: 0; transform: translateX(-30px); }
 .empty-state { position: absolute; top: 40%; left: 50%; transform: translate(-50%, -50%); color: #8ab4f8; font-size: 14px; opacity: 0.4; letter-spacing: 2px; }
+
+/* 数据治理日志的专属青蓝色样式 */
+.alert-item.item-governance { 
+  border-left-color: #00f6ff; 
+  background: rgba(0, 246, 255, 0.05); 
+  border-color: rgba(0, 246, 255, 0.2); 
+}
+.alert-item.item-governance:hover { 
+  background: rgba(0, 246, 255, 0.15); 
+  box-shadow: 0 0 10px rgba(0, 246, 255, 0.2); 
+}
+.item-governance .alert-msg { color: #8ab4f8; } /* 治理文本颜色 */
+.alert-status.status-governance { background: #00f6ff; color: #0b1524; } /* 标签变青色 */
 </style>
 
 <style>
@@ -355,5 +380,8 @@ body, html, #app {
   width: 100%;
   height: 100%;
   overflow: hidden; /* 防止出现多余的滚动条 */
+}
+* { /* 👇 加上这段，强制所有元素的 width 包含 padding 和 border */
+  box-sizing: border-box;
 }
 </style>

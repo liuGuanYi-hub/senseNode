@@ -12,7 +12,6 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.Random;
 
@@ -25,69 +24,99 @@ public class MockDataGenerator {
     private final AlertLogMapper alertLogMapper;
     private final Random random = new Random();
     
-    // 缓存上一次的有效温度用于滤波计算
+    // 缓存状态用于清洗和防重
     private BigDecimal lastTemp = null;
+    private BigDecimal lastHum = null;
+    private String lastPayloadHash = ""; // 用于重复值判断
 
     @Scheduled(fixedRate = 2000)
     @Transactional(rollbackFor = Exception.class)
     public void generateMockData() {
-        String mockDeviceId = "SN-DEVICE-001";
+        String mockDeviceId = "SERVER-009";
         LocalDateTime now = LocalDateTime.now();
 
-        // 随机生成 40~90度 的温度
-        double rawTempVal = 40 + (90 - 40) * random.nextDouble();
+        // ----------------------------------------------------
+        // 😈 1. 模拟产生各种“毒数据” (原始负载)
+        // ----------------------------------------------------
+        Object rawTempObj = 40 + (90 - 40) * random.nextDouble();
+        Object rawHumObj = 30 + (80 - 30) * random.nextDouble();
         
-        // 刻意制造传感器采集噪声：5% 概率出现 +50 度的恐怖峰值突刺（用于面试展示限幅滤波效果）
-        if (random.nextInt(100) < 5) {
-            rawTempVal += 50.0;
+        int randomChance = random.nextInt(100);
+        if (randomChance < 5) {
+            rawTempObj = null; // 模拟：缺失值
+        } else if (randomChance < 10) {
+            rawTempObj = "NaN_ERROR"; // 模拟：乱码/错误值
+        } else if (randomChance < 15) {
+            rawTempObj = 5000.0; // 模拟：物理极值错误 (机房不可能 5000 度)
+        } else if (randomChance < 20) {
+            rawTempObj = (Double) rawTempObj + 50.0; // 模拟：电磁干扰导致的瞬间突变 (毛刺)
         }
 
-        double humVal = 30 + (80 - 30) * random.nextDouble();
-        
-        BigDecimal rawTemperature = BigDecimal.valueOf(rawTempVal).setScale(2, RoundingMode.HALF_UP);
-        BigDecimal humidity = BigDecimal.valueOf(humVal).setScale(2, RoundingMode.HALF_UP);
-
-        // ===== 引入面试亮点数据治理：去噪清洗 =====
-        BigDecimal temperature = DataCleaner.cleanTemperature(rawTemperature, lastTemp);
-        if (rawTemperature.compareTo(temperature) != 0) {
-            log.info("【过滤】拦截到异常传感器噪声：突变前={}, 当前有效恢复={}", rawTemperature, temperature);
+        // ----------------------------------------------------
+        // 🛡️ 2. 重复值处理 (Duplicate Checking)
+        // ----------------------------------------------------
+        // 业务场景：传感器因为网络重传，连续发了两次一模一样的数据包
+        String currentPayloadHash = String.valueOf(rawTempObj) + "_" + String.valueOf(rawHumObj);
+        if (currentPayloadHash.equals(lastPayloadHash)) {
+            log.info("【重复值拦截】检测到重复的数据包请求，已丢弃");
+            return; // 直接丢弃，不入库
         }
-        lastTemp = temperature; // 缓存有效值
+        lastPayloadHash = currentPayloadHash; // 更新防重令牌
 
-        // ===== 引入面试亮点评级告警：分级逻辑 =====
+        // ----------------------------------------------------
+        // 🛠️ 3. 调用数据清洗引擎进行治理，并记录可视化日志
+        // ----------------------------------------------------
+        BigDecimal temperature = DataCleaner.cleanData(rawTempObj, lastTemp, -20.0, 120.0, 15.0, 25.0, "温度");
+        BigDecimal humidity = DataCleaner.cleanData(rawHumObj, lastHum, 0.0, 100.0, 20.0, 45.0, "湿度");
+
+        // 如果原始数据和清洗后的数据差距很大，说明触发了清洗引擎！
+        if (rawTempObj != null && !rawTempObj.toString().equals("NaN_ERROR")) {
+            try {
+                double raw = Double.parseDouble(rawTempObj.toString());
+                if (Math.abs(raw - temperature.doubleValue()) > 0.1) {
+                    // 将清洗动作推送到前端的日志墙！
+                    saveAlert(mockDeviceId, "【数据治理】拦截温度异常波动: " + raw + "℃，已平滑修复为 " + temperature + "℃", now);
+                }
+            } catch (Exception e) {
+                 saveAlert(mockDeviceId, "【数据治理】拦截到乱码数据，已启动安全值兜底机制", now);
+            }
+        } else if (rawTempObj == null || rawTempObj.toString().equals("NaN_ERROR")) {
+             saveAlert(mockDeviceId, "【数据治理】拦截到乱码/缺失数据，已启动安全值兜底机制", now);
+        }
+
+        lastTemp = temperature;
+        lastHum = humidity;
+
+        // ----------------------------------------------------
+        // 🚨 4. 分级告警联动
+        // ----------------------------------------------------
         double tempDouble = temperature.doubleValue();
         String alertLevel = "NORMAL";
 
         if (tempDouble >= 80) {
-            alertLevel = "CRITICAL"; // 一级告警：红灯停机
-            saveAlert(mockDeviceId, "严重故障：设备温度极高，请立即停机！", now);
+            alertLevel = "CRITICAL";
+            saveAlert(mockDeviceId, "严重故障：设备温度极高 (" + tempDouble + "℃)，请立即停机！", now);
         } else if (tempDouble >= 70) {
-            alertLevel = "WARNING"; // 二级告警：黄灯观察
-            saveAlert(mockDeviceId, "预警：设备温度偏高，请注意观察。", now);
+            alertLevel = "WARNING";
+            saveAlert(mockDeviceId, "预警：设备温度偏高 (" + tempDouble + "℃)，请注意观察。", now);
         }
 
-        // 保存设备监测记录
+        // 保存入库
         DeviceData data = new DeviceData();
         data.setDeviceId(mockDeviceId);
         data.setTemperature(temperature);
         data.setHumidity(humidity);
-        data.setLevel(alertLevel); // 植入当前温度层级
+        data.setLevel(alertLevel);
         data.setCreateTime(now);
         deviceDataMapper.insert(data);
-        
-        log.info("【设备监控】设备[{}] 上报 -> 温度验证:{}℃, 湿度:{}%, 级别:{}", mockDeviceId, temperature, humidity, alertLevel);
     }
     
-    /**
-     * 通用的告警日志写入保存方法
-     */
     private void saveAlert(String deviceId, String msg, LocalDateTime time) {
         AlertLog alert = new AlertLog();
         alert.setDeviceId(deviceId);
         alert.setAlertMessage(msg);
-        alert.setStatus(0); // 0-未处理
+        alert.setStatus(0);
         alert.setCreateTime(time);
         alertLogMapper.insert(alert);
-        log.warn("【触发告警机制】: {}", msg);
     }
 }
