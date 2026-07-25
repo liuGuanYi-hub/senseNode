@@ -35,3 +35,10 @@
 
 ## 👨‍💻 关于作者
 **全栈独立开发者**。具备完整的前后端闭环工程能力，对工业级数据大屏、性能优化及系统架构设计有浓厚兴趣。
+
+## 动态系统架构图
+
+![senseNode 动态系统架构图](docs/architecture/dynamic-archify-architecture.svg)
+
+- [打开交互式动态架构图](docs/architecture/dynamic-archify-architecture.html)
+- [查看架构源数据](docs/architecture/dynamic-archify-architecture.json)

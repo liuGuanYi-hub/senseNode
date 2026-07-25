@@ -1,0 +1,149 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "senseNode",
+    "subtitle": "Industrial monitoring and offline data governance",
+    "output": "dynamic-archify-architecture.html"
+  },
+  "components": [
+    {
+      "id": "sensor",
+      "type": "external",
+      "label": "Sensors",
+      "sublabel": "Online metrics",
+      "pos": [
+        20,
+        250
+      ],
+      "size": [
+        140,
+        64
+      ]
+    },
+    {
+      "id": "dashboard",
+      "type": "frontend",
+      "label": "Vue Dashboard",
+      "sublabel": "ECharts dark screen",
+      "pos": [
+        250,
+        100
+      ],
+      "size": [
+        170,
+        64
+      ]
+    },
+    {
+      "id": "bff",
+      "type": "backend",
+      "label": "Spring BFF",
+      "sublabel": "Aggregation layer",
+      "pos": [
+        500,
+        250
+      ],
+      "size": [
+        160,
+        64
+      ]
+    },
+    {
+      "id": "diagnostics",
+      "type": "security",
+      "label": "Diagnostics",
+      "sublabel": "Filter + health",
+      "pos": [
+        720,
+        120
+      ],
+      "size": [
+        160,
+        64
+      ]
+    },
+    {
+      "id": "mysql",
+      "type": "database",
+      "label": "MySQL",
+      "sublabel": "History + alerts",
+      "pos": [
+        720,
+        380
+      ],
+      "size": [
+        160,
+        64
+      ]
+    },
+    {
+      "id": "baseline",
+      "type": "database",
+      "label": "Offline Baseline",
+      "sublabel": "Reference data",
+      "pos": [
+        980,
+        250
+      ],
+      "size": [
+        170,
+        64
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "senseNode platform",
+      "wraps": [
+        "dashboard",
+        "bff",
+        "diagnostics",
+        "mysql",
+        "baseline"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "from": "sensor",
+      "to": "bff",
+      "label": "telemetry",
+      "variant": "emphasis"
+    },
+    {
+      "from": "bff",
+      "to": "dashboard",
+      "label": "health view",
+      "variant": "emphasis"
+    },
+    {
+      "from": "bff",
+      "to": "diagnostics",
+      "label": "clean",
+      "fromSide": "top",
+      "toSide": "bottom",
+      "route": "orthogonal-v",
+      "variant": "security"
+    },
+    {
+      "from": "bff",
+      "to": "mysql",
+      "label": "history",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "route": "orthogonal-v"
+    },
+    {
+      "from": "diagnostics",
+      "to": "baseline",
+      "label": "compare",
+      "fromSide": "right",
+      "toSide": "top",
+      "route": "orthogonal-h",
+      "variant": "dashed"
+    }
+  ],
+  "cards": []
+}
